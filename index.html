@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LLM Wasm JIT Runtime Dashboard</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --panel: #161b22;
+      --border: #30363d;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --text: #c9d1d9;
+    }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: 'Fira Code', monospace, sans-serif;
+      margin: 0;
+      padding: 20px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      height: 90vh;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .header {
+      background: #21262d;
+      padding: 10px 15px;
+      font-weight: bold;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .console {
+      padding: 15px;
+      flex-grow: 1;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    button {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .tag { font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #30363d; }
+  </style>
+</head>
+<body>
+
+  <div class="panel">
+    <div class="header">
+      <span>1. LLM Hex Bytecode Stream</span>
+      <span id="stream-status" class="tag">Initializing</span>
+    </div>
+    <div id="llm-stream" class="console">Click "Run Pipeline" to stream Wasm binary chunks from LLM...</div>
+  </div>
+
+  <div class="panel">
+    <div class="header">
+      <span>2. WASI Engine Output</span>
+      <button id="run-btn" disabled onclick="startSimulation()">Run Pipeline</button>
+    </div>
+    <div id="wasi-console" class="console">Runtime ready. Awaiting WASI payload...</div>
+  </div>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>

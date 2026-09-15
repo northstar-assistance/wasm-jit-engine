@@ -1,0 +1,627 @@
+1. .env.example
+#####$$$$#####$$$$#####
+PORT=3000
+NODE_ENV=development
+DATABASE_URL=postgresql://admin:password123@localhost:5432/towbook_ai_db
+REDIS_HOST=localhost
+REDIS_PORT=6379
+TOWBOOK_MOCK_MODE=true
+TOWBOOK_API_URL=https://api.towbook.com/v1
+TOWBOOK_API_KEY=mock_key
+INHOUSE_WEBHOOK_URL=http://localhost:3001/api/ai-results
+INHOUSE_WEBHOOK_SECRET=supersecretkey123
+#####$$$$#####$$$$#####
+2. docker-compose.yml
+#####$$$$#####$$$$#####
+version: '3.8'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: towbook_ai_db
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password123
+      POSTGRES_DB: towbook_ai_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d towbook_ai_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: towbook_ai_queue
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+#####$$$$#####$$$$#####
+3. prisma/schema.prisma
+#####$$$$#####$$$$#####
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model WebhookPayload {
+  id          String       @id @default(uuid())
+  source      String       @default("towbook")
+  eventType   String
+  rawPayload  Json
+  processed   Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+  
+  auditLogs   AuditTrail[]
+}
+
+model AuditTrail {
+  id                  String         @id @default(uuid())
+  webhookPayloadId    String
+  webhookPayload      WebhookPayload @relation(fields: [webhookPayloadId], references: [id], onDelete: Cascade)
+  intentDetected      String?
+  confidence          Float?
+  generatedSummary    String?
+  generatedResponse   String?
+  inferenceTimeMs     Int?
+  wasmModelUsed       String         @default("ONNX-WASM-Transformers")
+  status              String         // "PROCESSED", "FAILED", "DISPATCHED"
+  createdAt           DateTime       @default(now())
+}
+
+model ModelCache {
+  id              String   @id @default(uuid())
+  modelName       String   @unique
+  totalInferences Int      @default(0)
+  avgLatencyMs    Float    @default(0)
+  lastUsedAt      DateTime @updatedAt
+}
+#####$$$$#####$$$$#####
+4. tsconfig.json
+#####$$$$#####$$$$#####
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true
+  },
+  "include": ["src/**/*"]
+}
+#####$$$$#####$$$$#####
+5. package.json
+#####$$$$#####$$$$#####
+{
+  "name": "towbook-wasm-ai-pipeline",
+  "version": "1.0.0",
+  "description": "Backend AI ingestion pipeline for Towbook & in-house apps using ONNX WASM",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "ts-node src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "db:migrate": "prisma migrate dev",
+    "db:generate": "prisma generate"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.10.0",
+    "@xenova/transformers": "^2.15.0",
+    "axios": "^1.6.7",
+    "bullmq": "^5.1.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.2",
+    "pino": "^8.19.0",
+    "pino-pretty": "^10.3.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.11.24",
+    "prisma": "^5.10.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}
+#####$$$$#####$$$$#####
+6. src/config/env.ts
+#####$$$$#####$$$$#####
+import dotenv from 'dotenv';
+dotenv.config();
+
+export const config = {
+  port: parseInt(process.env.PORT || '3000', 10),
+  nodeEnv: process.env.NODE_ENV || 'development',
+  databaseUrl: process.env.DATABASE_URL || 'postgresql://admin:password123@localhost:5432/towbook_ai_db',
+  redis: {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6379', 10),
+  },
+  towbook: {
+    apiUrl: process.env.TOWBOOK_API_URL || 'https://api.towbook.com/v1',
+    apiKey: process.env.TOWBOOK_API_KEY || 'mock_key',
+    mockMode: process.env.TOWBOOK_MOCK_MODE === 'true',
+  },
+  inhouse: {
+    webhookUrl: process.env.INHOUSE_WEBHOOK_URL || 'http://localhost:3001/api/ai-results',
+    webhookSecret: process.env.INHOUSE_WEBHOOK_SECRET || 'supersecretkey123',
+  },
+};
+#####$$$$#####$$$$#####
+7. src/config/logger.ts
+#####$$$$#####$$$$#####
+import pino from 'pino';
+import { config } from './env';
+
+export const logger = pino({
+  level: config.nodeEnv === 'development' ? 'debug' : 'info',
+  transport: config.nodeEnv === 'development' ? {
+    target: 'pino-pretty',
+    options: { colorize: true, translateTime: 'HH:MM:ss Z' }
+  } : undefined,
+});
+#####$$$$#####$$$$#####
+8. src/wasm-ai.ts
+#####$$$$#####$$$$#####
+import { pipeline } from '@xenova/transformers';
+import { logger } from './config/logger';
+
+export class WasmAiEngine {
+  private static classifier: any = null;
+  private static summarizer: any = null;
+
+  static async init() {
+    if (!this.classifier) {
+      logger.info('Initializing WASI/ONNX Zero-Shot Classifier...');
+      this.classifier = await pipeline('zero-shot-classification', 'Xenova/mobilebert-uncased-mnli');
+    }
+    if (!this.summarizer) {
+      logger.info('Initializing WASI/ONNX Summarization Pipeline...');
+      this.summarizer = await pipeline('summarization', 'Xenova/distilbart-cnn-6-6');
+    }
+  }
+
+  static async classifyTowIntent(text: string) {
+    await this.init();
+    const candidateLabels = ['Lockout', 'Flat Tire', 'Impound Request', 'Winch Out', 'Tow Transport'];
+    const result = await this.classifier(text, candidateLabels);
+    return {
+      topIntent: result.labels[0],
+      confidence: parseFloat((result.scores[0] * 100).toFixed(2)),
+    };
+  }
+
+  static async summarizeNote(text: string) {
+    await this.init();
+    if (!text || text.trim().length === 0) return 'No notes provided.';
+    const result = await this.summarizer(text, { max_new_tokens: 100 });
+    return result[0].summary_text;
+  }
+
+  static async generateResponse(context: string, intent: string) {
+    return `${intent} service requested. High priority dispatch initiated based on notes: "${context.slice(0, 60)}..."`;
+  }
+}
+#####$$$$#####$$$$#####
+9. src/services/towbook-adapter.ts
+#####$$$$#####$$$$#####
+import axios from 'axios';
+import { config } from '../config/env';
+import { logger } from '../config/logger';
+
+export interface TowbookUpdatePayload {
+  ticketId: string;
+  intent: string;
+  summary: string;
+  generatedResponse: string;
+}
+
+export class TowbookAdapter {
+  static async updateTicket(data: TowbookUpdatePayload): Promise<boolean> {
+    if (config.towbook.mockMode) {
+      logger.info(`[MOCK TOWBOOK ADAPTER] Updated Ticket ${data.ticketId}:`, {
+        intent: data.intent,
+        summary: data.summary,
+        response: data.generatedResponse,
+      });
+      return true;
+    }
+
+    try {
+      const response = await axios.post(
+        `${config.towbook.apiUrl}/tickets/${data.ticketId}/notes`,
+        {
+          note: `[AI Classification]: ${data.intent}\n[Summary]: ${data.summary}\n[Dispatch Note]: ${data.generatedResponse}`,
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${config.towbook.apiKey}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+      logger.info(`Updated Towbook API for ticket ${data.ticketId}`, { status: response.status });
+      return true;
+    } catch (error: any) {
+      logger.error(`Failed to update Towbook API for ticket ${data.ticketId}:`, error.message);
+      return false;
+    }
+  }
+}
+#####$$$$#####$$$$#####
+10. src/services/webhook-dispatcher.ts
+#####$$$$#####$$$$#####
+import axios from 'axios';
+import crypto from 'crypto';
+import { config } from '../config/env';
+import { logger } from '../config/logger';
+
+export interface InhouseWebhookPayload {
+  payloadId: string;
+  ticketId: string;
+  intent: string;
+  confidence: number;
+  summary: string;
+  generatedResponse: string;
+  inferenceTimeMs: number;
+  timestamp: string;
+}
+
+export class WebhookDispatcher {
+  static async dispatchToInhouse(payload: InhouseWebhookPayload): Promise<boolean> {
+    const body = JSON.stringify(payload);
+    const signature = crypto
+      .createHmac('sha256', config.inhouse.webhookSecret)
+      .update(body)
+      .digest('hex');
+
+    try {
+      const response = await axios.post(config.inhouse.webhookUrl, payload, {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Hub-Signature-256': `sha256=${signature}`,
+        },
+        timeout: 5000,
+      });
+      logger.info(`Dispatched AI results to in-house webhook`, { status: response.status });
+      return true;
+    } catch (error: any) {
+      logger.warn(`Failed to deliver webhook to in-house app (${config.inhouse.webhookUrl}): ${error.message}`);
+      return false;
+    }
+  }
+}
+#####$$$$#####$$$$#####
+11. src/queue/worker.ts
+#####$$$$#####$$$$#####
+import { Worker, Job } from 'bullmq';
+import { PrismaClient } from '@prisma/client';
+import { config } from '../config/env';
+import { logger } from '../config/logger';
+import { WasmAiEngine } from '../wasm-ai';
+import { TowbookAdapter } from '../services/towbook-adapter';
+import { WebhookDispatcher } from '../services/webhook-dispatcher';
+
+const prisma = new PrismaClient();
+
+export function startWorker() {
+  const worker = new Worker(
+    'towbook-jobs',
+    async (job: Job) => {
+      const { payloadId, ticketData } = job.data;
+      logger.info(`Starting WASM AI job ${job.id} for payload ${payloadId}`);
+      const startTime = Date.now();
+
+      const notesText = ticketData.notes || ticketData.description || '';
+      const ticketId = ticketData.id || 'unknown';
+
+      try {
+        // 1. WASM AI Inference
+        const intentResult = await WasmAiEngine.classifyTowIntent(notesText);
+        const summary = await WasmAiEngine.summarizeNote(notesText);
+        const generatedResponse = await WasmAiEngine.generateResponse(notesText, intentResult.topIntent);
+        const inferenceTimeMs = Date.now() - startTime;
+
+        // 2. Persist Audit Trail
+        await prisma.auditTrail.create({
+          data: {
+            webhookPayloadId: payloadId,
+            intentDetected: intentResult.topIntent,
+            confidence: intentResult.confidence,
+            generatedSummary: summary,
+            generatedResponse,
+            inferenceTimeMs,
+            wasmModelUsed: 'ONNX-WASM-Transformers',
+            status: 'PROCESSED',
+          },
+        });
+
+        // 3. Mark Payload Processed
+        await prisma.webhookPayload.update({
+          where: { id: payloadId },
+          data: { processed: true },
+        });
+
+        // 4. Update Towbook API Adapter
+        await TowbookAdapter.updateTicket({
+          ticketId,
+          intent: intentResult.topIntent,
+          summary,
+          generatedResponse,
+        });
+
+        // 5. Dispatch Webhook to In-house Application
+        await WebhookDispatcher.dispatchToInhouse({
+          payloadId,
+          ticketId,
+          intent: intentResult.topIntent,
+          confidence: intentResult.confidence,
+          summary,
+          generatedResponse,
+          inferenceTimeMs,
+          timestamp: new Date().toISOString(),
+        });
+
+        logger.info(`Completed job ${job.id} in ${inferenceTimeMs}ms`);
+      } catch (err: any) {
+        logger.error(`Job ${job.id} failed:`, err);
+        await prisma.auditTrail.create({
+          data: {
+            webhookPayloadId: payloadId,
+            status: 'FAILED',
+            inferenceTimeMs: Date.now() - startTime,
+          },
+        });
+        throw err;
+      }
+    },
+    {
+      connection: {
+        host: config.redis.host,
+        port: config.redis.port,
+      },
+    }
+  );
+
+  worker.on('failed', (job, err) => {
+    logger.error(`BullMQ worker error on job ${job?.id}:`, err);
+  });
+
+  return worker;
+}
+#####$$$$#####$$$$#####
+12. src/routes/webhooks.ts
+#####$$$$#####$$$$#####
+import { Router, Request, Response } from 'express';
+import { Queue } from 'bullmq';
+import { PrismaClient } from '@prisma/client';
+import { config } from '../config/env';
+import { logger } from '../config/logger';
+
+const router = Router();
+const prisma = new PrismaClient();
+const dispatchQueue = new Queue('towbook-jobs', {
+  connection: { host: config.redis.host, port: config.redis.port },
+});
+
+router.post('/towbook', async (req: Request, res: Response) => {
+  try {
+    const { eventType, ticketData } = req.body;
+
+    if (!ticketData) {
+      return res.status(400).json({ error: 'Missing ticketData in payload' });
+    }
+
+    const payloadRecord = await prisma.webhookPayload.create({
+      data: {
+        source: 'towbook',
+        eventType: eventType || 'CALL_CREATED',
+        rawPayload: ticketData,
+      },
+    });
+
+    const job = await dispatchQueue.add('process-ticket', {
+      payloadId: payloadRecord.id,
+      ticketData,
+    });
+
+    logger.info(`Ingested webhook ${payloadRecord.id}, queued job ${job.id}`);
+
+    return res.status(202).json({
+      status: 'ACKNOWLEDGED',
+      payloadId: payloadRecord.id,
+      jobId: job.id,
+    });
+  } catch (error: any) {
+    logger.error('Error handling Towbook webhook:', error);
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+export default router;
+#####$$$$#####$$$$#####
+13. src/routes/metrics.ts
+#####$$$$#####$$$$#####
+import { Router, Request, Response } from 'express';
+import { PrismaClient } from '@prisma/client';
+
+const router = Router();
+const prisma = new PrismaClient();
+
+router.get('/summary', async (req: Request, res: Response) => {
+  try {
+    const totalProcessed = await prisma.auditTrail.count({
+      where: { status: 'PROCESSED' },
+    });
+
+    const failureCount = await prisma.auditTrail.count({
+      where: { status: 'FAILED' },
+    });
+
+    const aggregateLatency = await prisma.auditTrail.aggregate({
+      _avg: { inferenceTimeMs: true },
+      where: { status: 'PROCESSED' },
+    });
+
+    const recentAudits = await prisma.auditTrail.findMany({
+      take: 10,
+      orderBy: { createdAt: 'desc' },
+      include: { webhookPayload: true },
+    });
+
+    return res.json({
+      totalProcessed,
+      failureCount,
+      averageInferenceTimeMs: Math.round(aggregateLatency._avg.inferenceTimeMs || 0),
+      recentAudits,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/intents', async (req: Request, res: Response) => {
+  try {
+    const intentDistribution = await prisma.auditTrail.groupBy({
+      by: ['intentDetected'],
+      _count: { id: true },
+      where: { status: 'PROCESSED', intentDetected: { not: null } },
+    });
+
+    return res.json({ intentDistribution });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+export default router;
+#####$$$$#####$$$$#####
+14. src/server.ts
+#####$$$$#####$$$$#####
+import express from 'express';
+import { config } from './config/env';
+import { logger } from './config/logger';
+import webhooksRouter from './routes/webhooks';
+import metricsRouter from './routes/metrics';
+import { startWorker } from './queue/worker';
+import { WasmAiEngine } from './wasm-ai';
+
+const app = express();
+
+app.use(express.json());
+
+// Register API Routes
+app.use('/api/webhooks', webhooksRouter);
+app.use('/api/metrics', metricsRouter);
+
+app.get('/', (req, res) => {
+  res.json({
+    service: 'Towbook WASM AI Pipeline',
+    status: 'running',
+    endpoints: {
+      webhook: 'POST /api/webhooks/towbook',
+      metrics: 'GET /api/metrics/summary',
+      intents: 'GET /api/metrics/intents',
+    },
+  });
+});
+
+async function main() {
+  logger.info('Pre-loading WASM AI Models...');
+  await WasmAiEngine.init();
+
+  logger.info('Starting BullMQ Queue Worker...');
+  startWorker();
+
+  app.listen(config.port, () => {
+    logger.info(`Server listening on port ${config.port} (${config.nodeEnv})`);
+  });
+}
+
+main().catch((err) => {
+  logger.error('Fatal startup error:', err);
+  process.exit(1);
+});
+#####$$$$#####$$$$#####
+15. .gitignore
+#####$$$$#####$$$$#####
+node_modules/
+dist/
+.env
+*.log
+coverage/
+.prisma/
+#####$$$$#####$$$$#####
+16. SETUP.md
+#####$$$$#####$$$$#####
+# Towbook WASM AI Pipeline Setup Guide
+
+This backend pipeline connects Towbook webhooks with an in-house app using local WASM AI model inference, BullMQ Redis queues, and Dockerized PostgreSQL.
+
+## Quick Start
+
+1. **Clone repo & switch branch:**
+   ```bash
+   git clone https://github.com/northstar-assistance/wasm-jit-engine.git
+   cd wasm-jit-engine
+   git checkout -b backend/ai-pipeline
+   npm install
+   ```
+
+2. **Configure Environment:**
+   ```bash
+   cp .env.example .env
+   ```
+
+3. **Start Docker Services:**
+   ```bash
+   docker-compose up -d
+   ```
+
+4. **Initialize Database:**
+   ```bash
+   npm run db:migrate
+   ```
+
+5. **Run Development Server:**
+   ```bash
+   npm run dev
+   ```
+
+## Test Webhook Endpoint
+
+Send a sample ticket payload via cURL:
+
+```bash
+curl -X POST http://localhost:3000/api/webhooks/towbook \
+  -H "Content-Type: application/json" \
+  -d '{
+    "eventType": "CALL_CREATED",
+    "ticketData": {
+      "id": "TICKET-992",
+      "description": "Vehicle stranded on highway",
+      "notes": "Driver locked keys inside cab while changing flat tire."
+    }
+  }'
+```
+
+Check metrics at:
+`http://localhost:3000/api/metrics/summary`

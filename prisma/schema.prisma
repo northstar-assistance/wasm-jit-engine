@@ -33,3 +33,9 @@ model AuditTrail {
 }
 
 model ModelCache {
+  id              String   @id @default(uuid())
+  modelName       String   @unique
+  totalInferences Int      @default(0)
+  avgLatencyMs    Float    @default(0)
+  lastUsedAt      DateTime @updatedAt
+}

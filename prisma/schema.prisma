@@ -1,0 +1,35 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model WebhookPayload {
+  id          String       @id @default(uuid())
+  source      String       @default("towbook")
+  eventType   String
+  rawPayload  Json
+  processed   Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+  
+  auditLogs   AuditTrail[]
+}
+
+model AuditTrail {
+  id                  String         @id @default(uuid())
+  webhookPayloadId    String
+  webhookPayload      WebhookPayload @relation(fields: [webhookPayloadId], references: [id], onDelete: Cascade)
+  intentDetected      String?
+  confidence          Float?
+  generatedSummary    String?
+  generatedResponse   String?
+  inferenceTimeMs     Int?
+  wasmModelUsed       String         @default("ONNX-WASM-Transformers")
+  status              String         // "PROCESSED", "FAILED", "DISPATCHED"
+  createdAt           DateTime       @default(now())
+}
+
+model ModelCache {

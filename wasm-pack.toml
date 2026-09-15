@@ -1,0 +1,8 @@
+[package]
+name = "wasm-jit-engine"
+publish = ["npmjs"]
+
+[profile.release]
+opt-level = "z"     # Optimize for size
+lto = true          # Enable link-time optimization
+codegen-units = 1   # Single codegen unit for better optimization

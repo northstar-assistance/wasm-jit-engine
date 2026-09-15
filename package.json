@@ -1,0 +1,24 @@
+{
+  "name": "wasm-jit-engine",
+  "version": "0.1.0",
+  "description": "A WebAssembly JIT compilation engine with WASI host bindings and streaming hex decoder",
+  "main": "index.html",
+  "scripts": {
+    "build": "wasm-pack build --target web",
+    "dev": "python -m http.server 8000",
+    "serve": "python -m http.server 8080"
+  },
+  "devDependencies": {
+    "wasm-pack": "^1.3.4"
+  },
+  "keywords": [
+    "wasm",
+    "jit",
+    "compiler",
+    "wasi",
+    "rust",
+    "webassembly"
+  ],
+  "author": "",
+  "license": "MIT"
+}

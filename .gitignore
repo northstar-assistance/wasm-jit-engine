@@ -1,0 +1,32 @@
+# Rust
+/target/
+Cargo.lock
+*.rlib
+*.rmeta
+**/*.rs.bk
+
+# WASM
+/pkg/
+/wasm-pack.log
+*.wasm
+
+# Node/JavaScript
+node_modules/
+package-lock.json
+yarn.lock
+dist/
+.parcel-cache/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Build artifacts
+*.o
+*.a
+*.so
+*.dylib

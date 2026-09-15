@@ -168,3 +168,30 @@ impl JitCompiler {
         ops.finalize().map_err(|e| e.to_string())
     }
 }
+
+// --- 3. Streaming Hex Decoder WASM Binding ---
+
+#[wasm_bindgen]
+pub struct FastWasmDecoder {
+    buffer: Vec<u8>,
+}
+
+#[wasm_bindgen]
+impl FastWasmDecoder {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        Self { buffer: Vec::new() }
+    }
+
+    pub fn push_hex_chunk(&mut self, hex_str: &str) -> Result<Option<Vec<u8>>, JsValue> {
+        let cleaned: String = hex_str.chars().filter(|c| !c.is_whitespace()).collect();
+        let bytes = hex::decode(&cleaned).map_err(|e| e.to_string())?;
+        self.buffer.extend_from_slice(&bytes);
+
+        if self.buffer.len() >= 4 && &self.buffer[0..4] == &[0x00, 0x61, 0x73, 0x6d] {
+            return Ok(Some(self.buffer.clone()));
+        }
+
+        Ok(None)
+    }
+}

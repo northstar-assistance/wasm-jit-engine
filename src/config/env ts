@@ -1,0 +1,3 @@
+import dotenv from 'dotenv'; dotenv.config();
+
+export const config = { port: parseInt(process.env.PORT || '3000', 10), nodeEnv: process.env.NODE_ENV || 'development', databaseUrl: process.env.DATABASE_URL || 'postgresql://admin:password123@localhost:5432/towbook_ai_db', redis: { host: process.env.REDIS_HOST || 'localhost', port: parseInt(process.env.REDIS_PORT || '6379', 10), }, towbook: { apiUrl: process.env.TOWBOOK_API_URL || 'https://api.towbook.com/v1', apiKey: process.env.TOWBOOK_API_KEY || 'mock_key', mockMode: process.env.TOWBOOK_MOCK_MODE === 'true', }, inhouse: { webhookUrl: process.env.INHOUSE_WEBHOOK_URL || 'http://localhost:3001/api/ai-results', webhookSecret: process.env.INHOUSE_WEBHOOK_SECRET || 'supersecretkey123', }, };

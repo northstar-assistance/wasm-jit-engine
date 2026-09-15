@@ -1,21 +1,4 @@
 
-4. tsconfig.json
-#####$$$$#####$$$$#####
-{
-  "compilerOptions": {
-    "target": "ES2020",
-    "module": "CommonJS",
-    "moduleResolution": "node",
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true
-  },
-  "include": ["src/**/*"]
-}
 #####$$$$#####$$$$#####
 5. package.json
 #####$$$$#####$$$$#####
